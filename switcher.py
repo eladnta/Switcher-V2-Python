@@ -28,13 +28,7 @@ data_list = []
 
 
 def banner():
-	print """
-		=========================================================
-	   	+ Switcher V2 Python                                    +
-	 	+ Reverse Engineering and Coding By:                    +
-	 	+ Aviad Golan (@AviadGolan) and Shai Rod (@NightRang3r) +
-	 	=========================================================	 
-"""
+	
 	print "Usage:\r"
 	print "======\r"
 	print "Off command:" + " ./" + sys.argv[0] + " 0\r"
