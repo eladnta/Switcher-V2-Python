@@ -3,3 +3,7 @@
 .gitignore
 *.pyc
 __pycache__/
+financial-poc/state/portfolio.json
+financial-poc/state/pending_orders.json
+financial-poc/state/benchmark.json
+financial-poc/state/convictions.json
