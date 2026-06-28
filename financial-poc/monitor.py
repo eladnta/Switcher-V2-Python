@@ -25,69 +25,13 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich import box
 
-from signals.macro_monitor import fetch_all as fetch_macro
-from signals.alternatives import fetch_all as fetch_alt
-from signals.news_analyzer import analyze_ticker_news, analyze_global_news
+from signals.news_analyzer import analyze_global_news
 from signals.stock_impact import compute_signal_overlay
-from signals.event_db import (
-    cache_get, cache_set, log_event, db_summary, get_recent_events
-)
+from signals.event_db import db_summary, get_recent_events
+from signals.collector import get_macro, get_alternatives, get_news
 from trading.portfolio import Portfolio
 
 console = Console()
-
-
-# ── Signal fetching with cache ────────────────────────────────────────────────
-
-def get_macro(force: bool = False) -> dict:
-    if not force:
-        cached = cache_get("macro")
-        if cached:
-            return cached
-    data = fetch_macro()
-    cache_set("macro", data)
-    return data
-
-
-def get_alternatives(force: bool = False) -> dict:
-    if not force:
-        cached = cache_get("alt")
-        if cached:
-            return cached
-    data = fetch_alt()
-    cache_set("alt", data)
-    return data
-
-
-def get_news(ticker: str, force: bool = False) -> dict:
-    if not force:
-        cached = cache_get("news", ticker)
-        if cached:
-            return cached
-    data = analyze_ticker_news(ticker)
-    cache_set("news", data, ticker)
-
-    # Auto-log significant news events
-    if data.get("event_tags"):
-        macro = get_macro()
-        vix_val = macro.get("vix", {}).get("value")
-        regime = macro.get("regime", {}).get("regime")
-        try:
-            import yfinance as yf
-            price = yf.Ticker(ticker).info.get("currentPrice")
-        except Exception:
-            price = None
-        for tag in data["event_tags"]:
-            log_event(
-                event_type=tag,
-                description=f"{ticker}: {data.get('sentiment_summary', tag)}",
-                ticker=ticker,
-                tags=data.get("event_tags"),
-                price=price,
-                macro_regime=regime,
-                vix=vix_val,
-            )
-    return data
 
 
 # ── Commands ──────────────────────────────────────────────────────────────────

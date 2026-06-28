@@ -25,12 +25,9 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich import box
 
+import universe
+import engine
 from config import SP100_TICKERS
-from data.fetcher import fetch_stock_data, fetch_sec_recent_filings
-from analysis.risk_scorer import score_risk
-from analysis.horizon_scorer import score_horizons
-from analysis.analyst_aggregator import aggregate_analysts
-from analysis.recommender import build_recommendation
 from trading.portfolio import Portfolio, INITIAL_CASH
 from trading.position_sizer import calc_position_size
 from trading.order_engine import submit_order, get_due_orders, get_pending_orders
@@ -43,18 +40,12 @@ console = Console()
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _fetch_and_analyze(ticker: str) -> dict | None:
-    try:
-        data = fetch_stock_data(ticker)
-        if not data.get("info"):
-            return None
-        sec = fetch_sec_recent_filings(ticker)
-        risk = score_risk(data)
-        horizons = score_horizons(data)
-        analysts = aggregate_analysts(data, sec)
-        return build_recommendation(ticker, data["info"], risk, horizons, analysts)
-    except Exception as e:
-        console.print(f"[dim red]{ticker}: {e}[/]")
+    """Delegate to the central engine — routes by asset class + applies signals."""
+    rec = engine.analyze(ticker, with_signals=True)
+    if rec and rec.get("error"):
+        console.print(f"[dim red]{ticker}: {rec['error']}[/]")
         return None
+    return rec
 
 
 def _current_prices(portfolio: Portfolio, extra: list[str] | None = None) -> dict[str, float]:
@@ -110,7 +101,14 @@ def cmd_run(args):
 
     # 3. Analyze tickers and generate new signals
     console.print("\n[bold]3. Analyzing universe...[/]")
-    tickers = SP100_TICKERS[:30]  # Limit to 30 for speed; expand as needed
+    universe_choice = getattr(args, "universe", "mixed")
+    if universe_choice == "equities":
+        tickers = SP100_TICKERS[:30]
+    elif universe_choice == "cross-asset":
+        tickers = universe.get_diversified_universe()
+    else:  # mixed: top equities + full cross-asset
+        tickers = SP100_TICKERS[:20] + universe.get_diversified_universe()
+    console.print(f"  [dim]Universe: {universe_choice} ({len(tickers)} instruments)[/]")
     new_orders = []
 
     for ticker in tickers:
@@ -379,7 +377,9 @@ def cmd_demo(args):
 def main():
     parser = argparse.ArgumentParser(description="Paper Trader — $10,000 virtual portfolio")
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("run",         help="Full analysis + order cycle")
+    p_run = sub.add_parser("run", help="Full analysis + order cycle")
+    p_run.add_argument("--universe", choices=["mixed", "equities", "cross-asset"],
+                       default="mixed", help="Which universe to trade (default: mixed)")
     sub.add_parser("status",      help="Portfolio snapshot")
     sub.add_parser("performance", help="Full stats vs SPY/QQQ")
     sub.add_parser("conviction",  help="Prediction accuracy report")

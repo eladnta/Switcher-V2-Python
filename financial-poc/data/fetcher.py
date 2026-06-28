@@ -30,6 +30,29 @@ def fetch_stock_data(ticker: str) -> dict:
     }
 
 
+def fetch_instrument(symbol: str, period: str = "1y") -> dict:
+    """
+    Light fetch for non-equity instruments (ETFs, commodities, currencies, crypto).
+    Returns info + price history. No fundamentals needed.
+    """
+    t = yf.Ticker(symbol)
+    info = _safe(t.info) or {}
+    history = _safe(lambda: t.history(period=period))
+    return {
+        "symbol": symbol,
+        "info": info,
+        "history": history,
+    }
+
+
+def fetch_history(symbol: str, period: str = "1y"):
+    """Fetch just the price history for a symbol (used for benchmarks/RS)."""
+    try:
+        return yf.Ticker(symbol).history(period=period)
+    except Exception:
+        return None
+
+
 def fetch_sec_recent_filings(ticker: str) -> list[dict]:
     """Pull recent 10-K/10-Q metadata from SEC EDGAR (no auth required)."""
     try:
