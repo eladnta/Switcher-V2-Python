@@ -91,6 +91,42 @@ python monitor.py run --interval 30  # refresh signals every 30 min
 python monitor.py db                 # event database stats
 ```
 
+## Signals are Modules (plugin architecture)
+
+Every signal is a **self-contained, pluggable module** with its own cost tier,
+weight, and asset-class scope. The engine auto-discovers all registered signals
+and combines them: `adjusted = base + Σ(impact × weight × confidence)`.
+
+```python
+# signals/modules/my_new_signal.py — that's all it takes to add a signal
+from signals.base import Signal, FREE
+from signals.registry import register
+
+@register
+class MyNewSignal(Signal):
+    name = "my_signal"
+    cost = FREE                  # free | paid | llm
+    applies_to = ("equity",)     # or ("all",), or specific asset classes
+    default_weight = 1.0
+
+    def evaluate(self, ctx):
+        return self._result(impact=+1.2, confidence=0.7, narrative="...")
+```
+
+**Cost tiers gate whole categories.** Only `free` signals run by default. When
+you later want paid data feeds or LLM-based signals (10-K reading, earnings-call
+analysis), you add that tier to `SignalConfig.allowed_costs` — no code changes,
+no rewrites. The paid/LLM modules plug into the exact same interface.
+
+Current free signals: `macro_regime`, `vix_fear`, `alternatives_impact`,
+`news_events`, `trend_confirmation`. List them with `python monitor.py modules`.
+
+| Layer | Module | Role |
+|---|---|---|
+| Interface | `signals/base.py` | `Signal` base class, `SignalContext`, `SignalResult`, cost tiers |
+| Registry | `signals/registry.py` | Registration, config (tiers/weights/enable), combination |
+| Modules | `signals/modules/*.py` | One file per signal — drop-in, auto-discovered |
+
 ## Design Principles
 
 1. **Realistic pace** — orders execute after a 5–45 min human delay + slippage.

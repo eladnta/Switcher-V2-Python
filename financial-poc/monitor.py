@@ -191,6 +191,32 @@ def cmd_events(args):
     console.print(t)
 
 
+def cmd_modules(args):
+    """List all registered signal modules and their metadata."""
+    import signals.modules  # noqa: F401  registers all signals
+    from signals.registry import registry_summary
+
+    rows = registry_summary()
+    t = Table(title="Registered Signal Modules", box=box.ROUNDED)
+    t.add_column("Signal", style="cyan")
+    t.add_column("Cost")
+    t.add_column("Applies to")
+    t.add_column("Weight", justify="center")
+    t.add_column("Enabled", justify="center")
+    t.add_column("Description")
+    for r in rows:
+        cost_color = {"free": "green", "paid": "yellow", "llm": "magenta"}.get(r["cost"], "white")
+        enabled = "[green]✓[/]" if r["enabled"] else "[dim]✗[/]"
+        t.add_row(
+            r["name"], f"[{cost_color}]{r['cost']}[/]",
+            ", ".join(r["applies_to"]), str(r["weight"]),
+            enabled, r["description"][:55],
+        )
+    console.print(t)
+    console.print("\n[dim]Only FREE-tier signals run by default. "
+                  "Add PAID/LLM tiers to SignalConfig.allowed_costs to enable more.[/]")
+
+
 def cmd_db(args):
     stats = db_summary()
     console.print(Panel(
@@ -272,6 +298,7 @@ def main():
     p_ev.add_argument("--days", type=int, default=30)
     p_ev.add_argument("--ticker", default=None)
 
+    sub.add_parser("modules", help="List registered signal modules")
     sub.add_parser("db", help="Database stats")
 
     p_run = sub.add_parser("run", help="Start continuous monitoring loop")
@@ -281,6 +308,7 @@ def main():
     dispatch = {
         "signals": cmd_signals, "news": cmd_news, "stock": cmd_stock_signals,
         "events": cmd_events, "db": cmd_db, "run": cmd_run,
+        "modules": cmd_modules,
     }
     fn = dispatch.get(args.command)
     if fn:

@@ -18,8 +18,10 @@ from analysis.horizon_scorer import score_horizons
 from analysis.analyst_aggregator import aggregate_analysts
 from analysis import technical
 from analysis.recommender import build_recommendation, _opportunity_to_action
-from signals.stock_impact import compute_signal_overlay
 from signals import collector
+from signals.base import SignalContext
+from signals import registry
+import signals.modules  # noqa: F401  (registers all signal modules)
 
 _benchmark_cache = {}
 
@@ -32,9 +34,9 @@ def analyze(symbol: str, with_signals: bool = True) -> dict | None:
 
     try:
         if asset_class == universe.EQUITY:
-            rec = _analyze_equity(symbol)
+            rec, history = _analyze_equity(symbol)
         else:
-            rec = _analyze_technical(symbol, asset)
+            rec, history = _analyze_technical(symbol, asset)
     except Exception as e:
         return {"symbol": symbol, "error": str(e)}
 
@@ -45,31 +47,31 @@ def analyze(symbol: str, with_signals: bool = True) -> dict | None:
     rec["region"] = asset.get("region")
 
     if with_signals:
-        rec = _apply_signal_overlay(rec, symbol, asset)
+        rec = _apply_signal_overlay(rec, symbol, asset, history)
 
     return rec
 
 
-def _analyze_equity(symbol: str) -> dict | None:
+def _analyze_equity(symbol: str):
     data = fetch_stock_data(symbol)
     info = data.get("info")
     if not info:
-        return None
+        return None, None
     sec = fetch_sec_recent_filings(symbol)
     risk = score_risk(data)
     horizons = score_horizons(data)
     analysts = aggregate_analysts(data, sec)
     rec = build_recommendation(symbol, info, risk, horizons, analysts)
     rec["pipeline"] = "fundamental"
-    return rec
+    return rec, data.get("history")
 
 
-def _analyze_technical(symbol: str, asset: dict) -> dict | None:
+def _analyze_technical(symbol: str, asset: dict):
     data = fetch_instrument(symbol)
     info = data.get("info") or {}
     history = data.get("history")
     if history is None or history.empty:
-        return None
+        return None, None
 
     bench = _get_benchmark()
     result = technical.analyze(history, bench, asset["asset_class"])
@@ -91,11 +93,11 @@ def _analyze_technical(symbol: str, asset: dict) -> dict | None:
     )
     rec["pipeline"] = "technical"
     rec["metrics"] = result.get("metrics", {})
-    return rec
+    return rec, history
 
 
-def _apply_signal_overlay(rec: dict, symbol: str, asset: dict) -> dict:
-    """Layer news + macro + alternatives onto the base score."""
+def _apply_signal_overlay(rec: dict, symbol: str, asset: dict, history) -> dict:
+    """Run all registered signal modules and combine into an overlay."""
     try:
         macro = collector.get_macro()
     except Exception:
@@ -105,7 +107,6 @@ def _apply_signal_overlay(rec: dict, symbol: str, asset: dict) -> dict:
     except Exception:
         alt = {}
 
-    # News only meaningful for equities and some ETFs
     if asset["asset_class"] == universe.EQUITY:
         try:
             news = collector.get_news(symbol)
@@ -117,11 +118,16 @@ def _apply_signal_overlay(rec: dict, symbol: str, asset: dict) -> dict:
     sector = rec.get("sector", asset.get("category", "Unknown"))
     base = rec["opportunity_score"]
 
-    overlay = compute_signal_overlay(symbol, sector, news, macro, alt, base)
+    ctx = SignalContext(
+        symbol=symbol, asset_class=asset["asset_class"], sector=sector,
+        base_score=base, info={}, history=history,
+        macro=macro, alternatives=alt, news=news,
+    )
+    overlay = registry.evaluate_all(ctx)
+
     rec["signal_overlay"] = overlay
     rec["base_opportunity_score"] = base
     rec["opportunity_score"] = overlay["adjusted_score"]
-    # Re-derive action from the signal-adjusted score
     rec["action"] = _opportunity_to_action(overlay["adjusted_score"], rec["risk"]["score"])
     return rec
 
