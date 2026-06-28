@@ -8,3 +8,4 @@ financial-poc/state/pending_orders.json
 financial-poc/state/benchmark.json
 financial-poc/state/convictions.json
 financial-poc/state/events.db
+financial-poc/state/ai_costs.json

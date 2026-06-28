@@ -10,3 +10,4 @@ from signals.modules import vix_fear          # noqa: F401
 from signals.modules import alternatives_impact  # noqa: F401
 from signals.modules import news_events       # noqa: F401
 from signals.modules import trend_confirmation  # noqa: F401
+from signals.modules import llm_thesis          # noqa: F401  (LLM tier — off by default)

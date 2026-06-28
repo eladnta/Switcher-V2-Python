@@ -127,6 +127,45 @@ Current free signals: `macro_regime`, `vix_fear`, `alternatives_impact`,
 | Registry | `signals/registry.py` | Registration, config (tiers/weights/enable), combination |
 | Modules | `signals/modules/*.py` | One file per signal — drop-in, auto-discovered |
 
+## AI Model Layer (pluggable LLM providers)
+
+The same plug-in philosophy applied to LLM backends. Each provider is an
+adapter behind one interface; AI-based signals call `ai.complete(...)` and get
+whichever provider is configured — swap or add a provider without touching
+signal code.
+
+| Provider | Tier | Default model | Needs |
+|---|---|---|---|
+| `ollama` | local | `llama3.1` | Ollama running locally (zero per-token cost) |
+| `anthropic` | cloud | `claude-opus-4-8` | `anthropic` SDK + `ANTHROPIC_API_KEY` |
+| `openai` | cloud | configurable | `openai` SDK + `OPENAI_API_KEY` |
+| `grok` | cloud | `grok-2-latest` | `openai` SDK + `XAI_API_KEY` (xAI OpenAI-compatible API) |
+
+**Nothing spends tokens by default.** No keys → every provider reports
+unavailable and `ai.complete()` fails gracefully. The default provider is
+chosen by `AI_PROVIDER`, else the first available one — **local before cloud**,
+so you never accidentally spend on cloud tokens. All spend is logged to
+`state/ai_costs.json` and viewable with `python ai_cli.py cost`.
+
+Adding a provider = one file in `ai/providers/` implementing `AIProvider`.
+
+```bash
+python ai_cli.py providers          # list providers + availability
+python ai_cli.py test "..."         # run a completion (--provider X to pick)
+python ai_cli.py cost               # accumulated token spend
+```
+
+The two modular layers connect via `signals/modules/llm_thesis.py` — an
+`llm`-tier signal that reads news through the AI layer. It's registered but
+**dormant** until the LLM cost tier is enabled (`SignalConfig.allowed_costs`),
+so the free path never imports a provider or spends a token.
+
+| Layer | Module | Role |
+|---|---|---|
+| Interface | `ai/base.py` | `AIProvider`, `AIResponse`, cost tiers |
+| Registry | `ai/registry.py` | Provider discovery, routing, cost tracking |
+| Adapters | `ai/providers/*.py` | One file per provider — Ollama, Anthropic, OpenAI, Grok |
+
 ## Design Principles
 
 1. **Realistic pace** — orders execute after a 5–45 min human delay + slippage.
